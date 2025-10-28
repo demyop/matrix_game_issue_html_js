@@ -1,0 +1,420 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Лабораторная №9: Матричная игра (Web)</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap" rel="stylesheet">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <style>
+        :root {
+            color-scheme: dark;
+            --bg: #0f1115;
+            --panel: #151924;
+            --panel-2: #111522;
+            --text: #e5e7eb;
+            --muted: #9aa4b2;
+            --primary: #3b82f6;
+            --accent: #f97316;
+            --border: #222738;
+            --green: #22c55e;
+            --red: #ef4444;
+        }
+        * { box-sizing: border-box; }
+        html, body { height: 100%; }
+        body {
+            margin: 0;
+            background: radial-gradient(1200px 1200px at 10% -10%, #1a2235 0%, transparent 50%) no-repeat, var(--bg);
+            color: var(--text);
+            font-family: Inter, system-ui, -apple-system, Segoe UI, Roboto, Ubuntu, Cantarell, Noto Sans, Arial, "Apple Color Emoji", "Segoe UI Emoji";
+            line-height: 1.4;
+        }
+        .container {
+            max-width: 1100px;
+            margin: 0 auto;
+            padding: 24px 16px 40px;
+        }
+        header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 12px;
+            margin-bottom: 18px;
+        }
+        .title {
+            font-size: 20px;
+            font-weight: 700;
+            letter-spacing: .2px;
+        }
+        .subtitle { color: var(--muted); font-size: 14px; }
+        .actions { display: flex; gap: 8px; flex-wrap: wrap; }
+        button {
+            background: linear-gradient(180deg, #1f2940, #182036);
+            color: var(--text);
+            border: 1px solid var(--border);
+            padding: 10px 14px;
+            border-radius: 10px;
+            cursor: pointer;
+            font-weight: 600;
+        }
+        button.primary { background: linear-gradient(180deg, #2563eb, #1d4ed8); border-color: #1e40af; }
+        button:disabled { opacity: .6; cursor: not-allowed; }
+        .grid { display: grid; grid-template-columns: 1fr; gap: 12px; }
+        @media (min-width: 980px) { .grid { grid-template-columns: 1fr 1fr; } }
+        .card {
+            background: linear-gradient(180deg, var(--panel), var(--panel-2));
+            border: 1px solid var(--border);
+            border-radius: 14px;
+            padding: 14px;
+        }
+        .card h3 { margin: 0 0 10px; font-size: 15px; font-weight: 700; }
+        textarea {
+            width: 100%;
+            min-height: 160px;
+            resize: vertical;
+            background: #0e1220;
+            color: var(--text);
+            border: 1px solid var(--border);
+            border-radius: 10px;
+            padding: 10px 12px;
+            font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+            font-size: 14px;
+        }
+        .result {
+            white-space: pre-wrap;
+            font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+            background: #0b0f1a;
+            border: 1px solid var(--border);
+            border-radius: 10px;
+            padding: 12px;
+            min-height: 180px;
+            overflow: auto;
+            font-size: 14px;
+        }
+        .charts {
+            display: grid;
+            grid-template-columns: 1fr;
+            gap: 12px;
+            align-items: center;
+            justify-items: center;
+        }
+        @media (min-width: 980px) {
+            .charts { grid-template-columns: 1fr 1fr; }
+        }
+        .chart-wrap {
+            width: 100%;
+            max-width: 520px;
+        }
+        .note { color: var(--muted); font-size: 13px; margin-top: 6px; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <header>
+            <div>
+                <div class="title">Лабораторная №9: Матричная игра</div>
+                <div class="subtitle">Ввод платёжной матрицы, упрощение доминированием, фиктивная игра</div>
+            </div>
+            <div class="actions">
+                <button id="btn-example">Контрольный пример</button>
+                <button id="btn-clear">Очистить</button>
+                <button class="primary" id="btn-solve">Решить</button>
+            </div>
+        </header>
+
+        <div class="grid">
+            <div class="card">
+                <h3>Платёжная матрица (строки через Enter, числа через пробел)</h3>
+                <textarea id="matrix-input">4 10 8 5
+8 7 5 12
+6 8 5 10
+7 14 11 19</textarea>
+                <div class="note">Пример: каждая строка — стратегия игрока A, столбец — игрока B.</div>
+            </div>
+            <div class="card">
+                <h3>Результаты</h3>
+                <div id="result" class="result"></div>
+            </div>
+        </div>
+
+        <div class="card" style="margin-top:12px;">
+            <h3>Гистограммы стратегий</h3>
+            <div class="charts">
+                <div class="chart-wrap"><canvas id="chartP"></canvas></div>
+                <div class="chart-wrap"><canvas id="chartQ"></canvas></div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Утилиты
+        function parseMatrix(text) {
+            const lines = text.trim().split(/\n+/).map(s => s.trim()).filter(Boolean);
+            const matrix = lines.map(line => line.split(/\s+/).map(Number));
+            if (matrix.length === 0) throw new Error("Матрица пуста");
+            const cols = matrix[0].length;
+            if (!matrix.every(r => r.length === cols && r.every(v => Number.isFinite(v)))) {
+                throw new Error("Некорректная матрица: разная длина строк или нечисловые значения");
+            }
+            return matrix.map(row => row.map(v => +v));
+        }
+
+        function hasSaddlePoint(A) {
+            const m = A.length, n = A[0].length;
+            const rowMins = A.map(row => Math.min(...row));
+            const colMaxs = Array.from({length: n}, (_, j) => Math.max(...A.map(r => r[j])));
+            const maxmin = Math.max(...rowMins);
+            const minmax = Math.min(...colMaxs);
+            if (Math.abs(maxmin - minmax) < 1e-12) {
+                const i = rowMins.indexOf(maxmin);
+                const j = colMaxs.indexOf(minmax);
+                return { has: true, value: maxmin, i, j };
+            }
+            return { has: false };
+        }
+
+        function simplifyByDominance(A) {
+            let M = A.map(r => r.slice());
+            let rowMap = Array.from({length: A.length}, (_, i) => i); // отслеживаем оригинальные индексы строк
+            let colMap = Array.from({length: A[0].length}, (_, i) => i); // отслеживаем оригинальные индексы столбцов
+            let changed = true;
+            while (changed) {
+                changed = false;
+                // Удаление доминируемых строк (удаляем i, если ∃k: row k >= row i и где-то строго >)
+                let toDelete = new Set();
+                for (let i = 0; i < M.length; i++) {
+                    for (let k = 0; k < M.length; k++) {
+                        if (i === k) continue;
+                        let ge = true, gt = false;
+                        for (let j = 0; j < M[0].length; j++) {
+                            if (M[k][j] < M[i][j]) { ge = false; break; }
+                            if (M[k][j] > M[i][j]) gt = true;
+                        }
+                        if (ge && gt) { toDelete.add(i); break; }
+                    }
+                }
+                if (toDelete.size) {
+                    // Обновляем rowMap перед удалением
+                    rowMap = rowMap.filter((_, idx) => !toDelete.has(idx));
+                    M = M.filter((_, idx) => !toDelete.has(idx));
+                    changed = true;
+                    continue;
+                }
+                // Удаление доминируемых столбцов (удаляем j, если ∃l: col l <= col j и где-то строго <)
+                toDelete = new Set();
+                for (let j = 0; j < M[0].length; j++) {
+                    for (let l = 0; l < M[0].length; l++) {
+                        if (j === l) continue;
+                        let le = true, lt = false;
+                        for (let i = 0; i < M.length; i++) {
+                            if (M[i][l] > M[i][j]) { le = false; break; }
+                            if (M[i][l] < M[i][j]) lt = true;
+                        }
+                        if (le && lt) { toDelete.add(j); break; }
+                    }
+                }
+                if (toDelete.size) {
+                    // Обновляем colMap перед удалением
+                    colMap = colMap.filter((_, idx) => !toDelete.has(idx));
+                    const keptIdx = Array.from({length: M[0].length}, (_, idx) => idx).filter(idx => !toDelete.has(idx));
+                    M = M.map(row => keptIdx.map(idx => row[idx]));
+                    changed = true;
+                }
+            }
+            return { matrix: M, rowMap, colMap };
+        }
+
+        function fictitiousPlay(A, maxIter = 20000, tol = 1e-4) {
+            const m = A.length, n = A[0].length;
+            const rowCounts = Array(m).fill(0);
+            const colCounts = Array(n).fill(0);
+            const prices = [];
+            for (let t = 1; t <= maxIter; t++) {
+                // Ход игрока A: выбирает i*, максимизируя A @ col_probs
+                const col_probs = t > 1 ? colCounts.map(c => c / (t - 1)) : Array(n).fill(1 / n);
+                let bestI = 0, bestVal = -Infinity;
+                for (let i = 0; i < m; i++) {
+                    let val = 0;
+                    for (let j = 0; j < n; j++) val += A[i][j] * col_probs[j];
+                    if (val > bestVal) { bestVal = val; bestI = i; }
+                }
+                rowCounts[bestI]++;
+
+                // Ход игрока B: выбирает j*, минимизируя row_probs @ A
+                const row_probs = rowCounts.map(c => c / t);
+                let bestJ = 0, bestVal2 = +Infinity;
+                for (let j = 0; j < n; j++) {
+                    let val = 0;
+                    for (let i = 0; i < m; i++) val += row_probs[i] * A[i][j];
+                    if (val < bestVal2) { bestVal2 = val; bestJ = j; }
+                }
+                colCounts[bestJ]++;
+
+                // Оценка цены игры
+                const colp = colCounts.map(c => c / t);
+                let maxAcol = -Infinity;
+                for (let i = 0; i < m; i++) {
+                    let val = 0; for (let j = 0; j < n; j++) val += A[i][j] * colp[j];
+                    if (val > maxAcol) maxAcol = val;
+                }
+                const rowp = rowCounts.map(c => c / t);
+                let minRowA = +Infinity;
+                for (let j = 0; j < n; j++) {
+                    let val = 0; for (let i = 0; i < m; i++) val += rowp[i] * A[i][j];
+                    if (val < minRowA) minRowA = val;
+                }
+                const priceEst = (maxAcol + minRowA) / 2;
+                prices.push(priceEst);
+
+                if (t > 100 && t % 100 === 0) {
+                    const recent = prices.slice(-100);
+                    const mean = recent.reduce((a,b)=>a+b,0)/recent.length;
+                    const sd = Math.sqrt(recent.reduce((s,x)=>s+(x-mean)*(x-mean),0)/recent.length);
+                    if (sd < tol) break;
+                }
+            }
+            const totalRows = rowCounts.reduce((a,b)=>a+b,0);
+            const totalCols = colCounts.reduce((a,b)=>a+b,0);
+            const p = rowCounts.map(c => c / totalRows);
+            const q = colCounts.map(c => c / totalCols);
+            const price = prices[prices.length - 1];
+            return { p, q, price };
+        }
+
+        // UI логика
+        const $ = (sel) => document.querySelector(sel);
+        const input = $("#matrix-input");
+        const resultEl = $("#result");
+        const btnSolve = $("#btn-solve");
+        const btnExample = $("#btn-example");
+        const btnClear = $("#btn-clear");
+        let chartP, chartQ;
+
+        function setResult(text) { resultEl.textContent = text; }
+
+        function drawCharts(p, q, price) {
+            const ctxP = document.getElementById('chartP').getContext('2d');
+            const ctxQ = document.getElementById('chartQ').getContext('2d');
+            if (chartP) chartP.destroy();
+            if (chartQ) chartQ.destroy();
+            chartP = new Chart(ctxP, {
+                type: 'bar',
+                data: {
+                    labels: p.map((_,i)=>`Стр ${i+1}`),
+                    datasets: [{
+                        label: `Стратегия A (цена ≈ ${price.toFixed(3)})`,
+                        data: p,
+                        backgroundColor: '#22c55e',
+                        borderColor: '#16a34a',
+                        borderWidth: 1.5
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    aspectRatio: 2,
+                    plugins: { legend: { labels: { color: '#cbd5e1' } } },
+                    scales: {
+                        x: { ticks: { color: '#94a3b8' }, grid: { color: 'rgba(148,163,184,0.15)' } },
+                        y: { ticks: { color: '#94a3b8' }, grid: { color: 'rgba(148,163,184,0.15)' }, suggestedMin: 0, suggestedMax: 1 }
+                    }
+                }
+            });
+            chartQ = new Chart(ctxQ, {
+                type: 'bar',
+                data: {
+                    labels: q.map((_,i)=>`Стб ${i+1}`),
+                    datasets: [{
+                        label: 'Стратегия B',
+                        data: q,
+                        backgroundColor: '#a78bfa',
+                        borderColor: '#8b5cf6',
+                        borderWidth: 1.5
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    aspectRatio: 2,
+                    plugins: { legend: { labels: { color: '#cbd5e1' } } },
+                    scales: {
+                        x: { ticks: { color: '#94a3b8' }, grid: { color: 'rgba(148,163,184,0.15)' } },
+                        y: { ticks: { color: '#94a3b8' }, grid: { color: 'rgba(148,163,184,0.15)' }, suggestedMin: 0, suggestedMax: 1 }
+                    }
+                }
+            });
+        }
+
+        btnExample.addEventListener('click', () => {
+            input.value = '4 10 8 5\n8 7 5 12\n6 8 5 10\n7 14 11 19';
+            setResult('');
+        });
+        btnClear.addEventListener('click', () => {
+            input.value = '';
+            setResult('');
+            if (chartP) chartP.destroy();
+            if (chartQ) chartQ.destroy();
+        });
+        btnSolve.addEventListener('click', () => {
+            try {
+                const A = parseMatrix(input.value);
+                setResult('Анализ матрицы...');
+                // Седловая точка
+                const sp = hasSaddlePoint(A);
+                if (sp.has) {
+                    const p = Array(A.length).fill(0); p[sp.i] = 1;
+                    const q = Array(A[0].length).fill(0); q[sp.j] = 1;
+                    let res = `✅ Найдена седловая точка в (${sp.i+1}, ${sp.j+1})\nЦена игры = ${sp.value.toFixed(4)}\n`;
+                    res += `Оптимальные чистые стратегии:\n  A → строка ${sp.i+1}\n  B → столбец ${sp.j+1}`;
+                    setResult(res);
+                    drawCharts(p, q, sp.value);
+                    return;
+                }
+                // Упрощение доминированием
+                const simplified = simplifyByDominance(A);
+                const S = simplified.matrix;
+                const rowMap = simplified.rowMap;
+                const colMap = simplified.colMap;
+
+                let res = 'Седловой точки нет.\n';
+                if (S.length !== A.length || S[0].length !== A[0].length) {
+                    res += 'Упрощённая матрица (после удаления доминируемых стратегий):\n';
+                    for (const row of S) res += '  ' + row.map(x => x.toFixed(2).padStart(6,' ')).join(' ') + '\n';
+                    res += '\n';
+                }
+                // Фиктивная игра
+                const ans = fictitiousPlay(S);
+
+                // Восстанавливаем полные стратегии для всех оригинальных строк и столбцов
+                const fullP = Array(A.length).fill(0);
+                const fullQ = Array(A[0].length).fill(0);
+                for (let i = 0; i < rowMap.length; i++) {
+                    fullP[rowMap[i]] = ans.p[i];
+                }
+                for (let j = 0; j < colMap.length; j++) {
+                    fullQ[colMap[j]] = ans.q[j];
+                }
+
+                res += `✅ Результат (метод фиктивной игры):\n`;
+                res += `Цена игры: ${ans.price.toFixed(4)}\n\n`;
+                res += `Все стратегии игрока A:\n`;
+                for (let i = 0; i < fullP.length; i++) {
+                    const status = fullP[i] > 1e-10 ? "" : "(исключена)";
+                    res += `  Стратегия ${i+1}: ${fullP[i].toFixed(4)} ${status}\n`;
+                }
+                res += `\nВсе стратегии игрока B:\n`;
+                for (let j = 0; j < fullQ.length; j++) {
+                    const status = fullQ[j] > 1e-10 ? "" : "(исключена)";
+                    res += `  Стратегия ${j+1}: ${fullQ[j].toFixed(4)} ${status}\n`;
+                }
+                setResult(res);
+                drawCharts(fullP, fullQ, ans.price);
+            } catch (e) {
+                setResult(`Ошибка ввода: ${e.message}`);
+            }
+        });
+    </script>
+</body>
+</html>
